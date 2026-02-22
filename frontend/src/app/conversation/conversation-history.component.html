@@ -1,0 +1,68 @@
+<div class="history-sidebar">
+
+  <!-- Sidebar Header -->
+  <div class="history-sidebar__header">
+    <span class="history-sidebar__title">Conversations</span>
+    <button mat-icon-button matTooltip="New conversation" (click)="startNewConversation()">
+      <mat-icon>add</mat-icon>
+    </button>
+  </div>
+
+  <mat-divider></mat-divider>
+
+  <!-- New Conversation Button -->
+  <button mat-stroked-button class="history-sidebar__new-btn" (click)="startNewConversation()">
+    <mat-icon>chat</mat-icon>
+    New Conversation
+  </button>
+
+  <mat-divider></mat-divider>
+
+  <!-- Conversations List -->
+  <div class="history-sidebar__list">
+
+    <div *ngIf="conversations.length === 0" class="history-sidebar__empty">
+      <mat-icon>history</mat-icon>
+      <p>No conversations yet</p>
+    </div>
+
+    <div
+      *ngFor="let conversation of conversations"
+      class="history-item"
+      [class.history-item--active]="activeId === conversation.id"
+      (click)="selectConversation(conversation)">
+
+      <!-- Editing mode -->
+      <div *ngIf="editingId === conversation.id" class="history-item__edit" (click)="$event.stopPropagation()">
+        <input
+          [(ngModel)]="editingTitle"
+          class="history-item__edit-input"
+          (keydown.enter)="saveTitle(conversation)"
+          (keydown.escape)="editingId = null"
+          autofocus>
+        <button mat-icon-button (click)="saveTitle(conversation)">
+          <mat-icon>check</mat-icon>
+        </button>
+      </div>
+
+      <!-- Display mode -->
+      <div *ngIf="editingId !== conversation.id" class="history-item__content">
+        <mat-icon class="history-item__icon">chat_bubble_outline</mat-icon>
+        <div class="history-item__text">
+          <span class="history-item__title">{{ conversation.title }}</span>
+          <span class="history-item__date">{{ formatDate(conversation.updatedAt) }}</span>
+        </div>
+        <div class="history-item__actions">
+          <button mat-icon-button matTooltip="Rename" (click)="startEditing(conversation, $event)">
+            <mat-icon>edit</mat-icon>
+          </button>
+          <button mat-icon-button matTooltip="Delete" color="warn" (click)="deleteConversation(conversation, $event)">
+            <mat-icon>delete</mat-icon>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>

@@ -1,0 +1,38 @@
+.table-renderer {
+  width: 100%;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  margin-top: 8px;
+
+  &__scroll {
+    overflow-x: auto;
+    max-height: 360px;
+    overflow-y: auto;
+  }
+
+  &__table {
+    width: 100%;
+    min-width: 500px;
+
+    th {
+      background: #1976d2;
+      color: white;
+      font-weight: 600;
+      font-size: 0.82rem;
+      white-space: nowrap;
+    }
+
+    td {
+      font-size: 0.82rem;
+      white-space: nowrap;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    tr:hover td {
+      background: #e3f2fd;
+    }
+  }
+}

@@ -1,0 +1,135 @@
+<div class="app-layout">
+
+  <!-- Sidebar -->
+  <app-conversation-history
+    *ngIf="isSidebarOpen"
+    (conversationSelected)="onConversationSelected($event)"
+    (newConversation)="onNewConversation()">
+  </app-conversation-history>
+
+  <!-- Main Chat -->
+  <div class="chat-wrapper">
+
+    <!-- Header -->
+    <div class="chat-header">
+      <div class="chat-header__left">
+        <button mat-icon-button matTooltip="Toggle history" (click)="toggleSidebar()">
+          <mat-icon>menu</mat-icon>
+        </button>
+        <img src="assets/logo-tte.jpg" alt="TTE International" class="chat-header__logo" />
+      </div>
+      <div class="chat-header__center">
+        <span class="chat-header__title">Data Chatbot</span>
+        <span class="chat-header__badge">UAP1</span>
+      </div>
+      <div class="chat-header__right">
+        <button mat-icon-button matTooltip="New conversation" (click)="onNewConversation()">
+          <mat-icon>add</mat-icon>
+        </button>
+        <button mat-icon-button matTooltip="Clear current chat" (click)="clearChat()">
+          <mat-icon>delete_outline</mat-icon>
+        </button>
+      </div>
+    </div>
+
+    <mat-divider></mat-divider>
+
+    <!-- Messages Area -->
+    <div class="chat-messages" #messagesContainer>
+
+      <!-- Empty state -->
+      <div *ngIf="messages.length === 0" class="chat-empty">
+        <img src="assets/logo-tte.jpg" alt="TTE International" class="chat-empty__logo" />
+        <p class="chat-empty__title">UAP1 Data Assistant</p>
+        <p class="chat-empty__hint">Ask me anything about UAP1 production data at TTE International</p>
+        <p class="chat-empty__hint">Try: "How many labels have status 1?" or "Show quantity by leadset as a radar chart"</p>
+      </div>
+
+      <!-- Message Bubbles -->
+      <div *ngFor="let message of messages" class="message-row" [ngClass]="'message-row--' + message.role">
+
+        <!-- Avatar -->
+        <div class="message-avatar">
+          <img *ngIf="message.role === 'bot'" src="assets/logo-tte.jpg" alt="TTE" class="message-avatar__logo" />
+          <mat-icon *ngIf="message.role === 'user'">person</mat-icon>
+        </div>
+
+        <!-- Bubble -->
+        <div class="message-bubble" [ngClass]="'message-bubble--' + message.role">
+
+          <!-- Loading spinner -->
+          <div *ngIf="message.loading" class="message-loading">
+            <mat-spinner diameter="20"></mat-spinner>
+            <span>Thinking...</span>
+          </div>
+
+          <!-- Text -->
+          <p *ngIf="!message.loading && message.text" class="message-text">{{ message.text }}</p>
+
+          <!-- Table Renderer -->
+          <app-table-renderer
+            *ngIf="!message.loading && message.response?.type === 'table' && message.response?.data?.length"
+            [columns]="message.response!.columns"
+            [data]="message.response!.data">
+          </app-table-renderer>
+
+          <!-- Chart Renderer -->
+          <app-chart-renderer
+            *ngIf="!message.loading && isChartType(message.response?.type || '') && message.response?.data?.length"
+            [type]="message.response!.type"
+            [data]="message.response!.data"
+            [chartConfig]="message.response!.chartConfig!">
+          </app-chart-renderer>
+
+          <!-- Action Row -->
+          <div *ngIf="!message.loading && message.response" class="message-actions">
+            <mat-chip-set *ngIf="message.response.generatedSql">
+              <mat-chip [matTooltip]="message.response.generatedSql" matTooltipClass="sql-tooltip">
+                <mat-icon matChipAvatar>code</mat-icon>
+                View SQL
+              </mat-chip>
+            </mat-chip-set>
+            <button
+              *ngIf="hasExportableData(message)"
+              mat-stroked-button
+              color="primary"
+              class="export-btn"
+              matTooltip="Export to Excel"
+              (click)="exportToExcel(message)">
+              <mat-icon>download</mat-icon>
+              Export Excel
+            </button>
+          </div>
+
+          <!-- Timestamp -->
+          <span class="message-time">{{ message.timestamp | date: 'HH:mm' }}</span>
+        </div>
+      </div>
+
+    </div>
+
+    <mat-divider></mat-divider>
+
+    <!-- Input Area -->
+    <div class="chat-input">
+      <mat-form-field appearance="outline" class="chat-input__field">
+        <mat-label>Ask about UAP1 data...</mat-label>
+        <input
+          matInput
+          [formControl]="messageControl"
+          (keydown)="onKeyDown($event)"
+          autocomplete="off">
+        <mat-hint>Press Enter to send</mat-hint>
+      </mat-form-field>
+      <button
+        mat-fab
+        color="primary"
+        class="chat-input__send"
+        [disabled]="isLoading || !messageControl.value?.trim()"
+        (click)="sendMessage()">
+        <mat-icon>{{ isLoading ? 'hourglass_empty' : 'send' }}</mat-icon>
+      </button>
+    </div>
+
+  </div>
+</div>
