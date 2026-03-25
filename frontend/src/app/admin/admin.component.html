@@ -1,0 +1,333 @@
+<div class="admin-layout">
+
+  <!-- Header -->
+  <div class="admin-header">
+    <div class="admin-header__left">
+      <button mat-icon-button (click)="toggleSidebar()" class="admin-header__toggle">
+        <mat-icon>{{ sidebarCollapsed ? 'menu' : 'menu_open' }}</mat-icon>
+      </button>
+      <img src="assets/logo-tte.jpg" alt="TTE International" class="admin-header__logo" />
+      <span class="admin-header__title">Admin Panel</span>
+      <span class="admin-header__badge">UAP1</span>
+    </div>
+    <div class="admin-header__right">
+      <span class="admin-header__user">{{ currentUser?.username }}</span>
+      <button mat-icon-button matTooltip="Chat" routerLink="/chat">
+        <mat-icon>chat</mat-icon>
+      </button>
+      <button mat-icon-button matTooltip="Dashboard" (click)="goToDashboard()">
+        <mat-icon>dashboard</mat-icon>
+      </button>
+      <button mat-icon-button matTooltip="Logout" (click)="logout()">
+        <mat-icon>logout</mat-icon>
+      </button>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div class="admin-body">
+
+    <!-- Sidebar -->
+    <div class="admin-sidebar" [class.admin-sidebar--collapsed]="sidebarCollapsed">
+      <nav class="admin-nav">
+        <div
+          *ngFor="let item of navItems"
+          class="admin-nav__item"
+          [class.admin-nav__item--active]="activeSection === item.id"
+          (click)="setSection(item.id)"
+          [matTooltip]="sidebarCollapsed ? item.label : ''"
+          matTooltipPosition="right">
+          <mat-icon class="admin-nav__icon">{{ item.icon }}</mat-icon>
+          <span class="admin-nav__label" *ngIf="!sidebarCollapsed">{{ item.label }}</span>
+        </div>
+      </nav>
+      <div class="admin-sidebar__stats" *ngIf="!sidebarCollapsed">
+        <div class="sidebar-stat">
+          <span class="sidebar-stat__value">{{ users.length }}</span>
+          <span class="sidebar-stat__label">Users</span>
+        </div>
+        <div class="sidebar-stat">
+          <span class="sidebar-stat__value">{{ conversations.length }}</span>
+          <span class="sidebar-stat__label">Convs</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="admin-main">
+
+      <!-- Alerts -->
+      <div *ngIf="successMessage" class="admin-alert admin-alert--success">
+        <mat-icon>check_circle</mat-icon> {{ successMessage }}
+      </div>
+      <div *ngIf="errorMessage" class="admin-alert admin-alert--error">
+        <mat-icon>error</mat-icon> {{ errorMessage }}
+      </div>
+
+      <!-- ═══ USER MANAGEMENT ═══ -->
+      <div *ngIf="activeSection === 'users'">
+        <div class="section-title">
+          <mat-icon>people</mat-icon>
+          <h2>User Management</h2>
+          <span class="section-badge">{{ users.length }} users</span>
+        </div>
+        <mat-card class="admin-card">
+          <mat-card-content>
+            <div class="admin-search">
+              <mat-icon>search</mat-icon>
+              <input class="admin-search__input" [(ngModel)]="searchQuery" (input)="filterUsers()" placeholder="Search by username, email or matricule..." />
+              <button *ngIf="searchQuery" mat-icon-button (click)="searchQuery = ''; filterUsers()">
+                <mat-icon>close</mat-icon>
+              </button>
+            </div>
+            <div *ngIf="isLoading" class="admin-loading"><mat-spinner diameter="40"></mat-spinner></div>
+            <table *ngIf="!isLoading" mat-table [dataSource]="filteredUsers" class="admin-table">
+              <ng-container matColumnDef="username">
+                <th mat-header-cell *matHeaderCellDef>Username</th>
+                <td mat-cell *matCellDef="let user"><div class="user-cell"><mat-icon class="user-cell__icon">person</mat-icon>{{ user.username }}</div></td>
+              </ng-container>
+              <ng-container matColumnDef="email">
+                <th mat-header-cell *matHeaderCellDef>Email</th>
+                <td mat-cell *matCellDef="let user">{{ user.email }}</td>
+              </ng-container>
+              <ng-container matColumnDef="matricule">
+                <th mat-header-cell *matHeaderCellDef>Matricule</th>
+                <td mat-cell *matCellDef="let user">{{ user.matricule }}</td>
+              </ng-container>
+              <ng-container matColumnDef="role">
+                <th mat-header-cell *matHeaderCellDef>Role</th>
+                <td mat-cell *matCellDef="let user"><span class="role-badge" [ngClass]="'role-badge--' + user.role.toLowerCase()">{{ user.role }}</span></td>
+              </ng-container>
+              <ng-container matColumnDef="createdAt">
+                <th mat-header-cell *matHeaderCellDef>Created</th>
+                <td mat-cell *matCellDef="let user">{{ user.createdAt | date: 'dd/MM/yyyy' }}</td>
+              </ng-container>
+              <ng-container matColumnDef="actions">
+                <th mat-header-cell *matHeaderCellDef>Actions</th>
+                <td mat-cell *matCellDef="let user">
+                  <div class="action-buttons">
+                    <button mat-stroked-button [color]="user.role === 'ADMIN' ? 'warn' : 'primary'" class="action-btn"
+                      [matTooltip]="user.role === 'ADMIN' ? 'Demote to USER' : 'Promote to ADMIN'"
+                      (click)="changeRole(user)" [disabled]="user.username === currentUser?.username">
+                      <mat-icon>{{ user.role === 'ADMIN' ? 'arrow_downward' : 'arrow_upward' }}</mat-icon>
+                      {{ user.role === 'ADMIN' ? 'Demote' : 'Promote' }}
+                    </button>
+                    <button mat-stroked-button color="warn" class="action-btn" (click)="deleteUser(user)" [disabled]="user.username === currentUser?.username">
+                      <mat-icon>delete</mat-icon> Delete
+                    </button>
+                  </div>
+                </td>
+              </ng-container>
+              <tr mat-header-row *matHeaderRowDef="['username', 'email', 'matricule', 'role', 'createdAt', 'actions']"></tr>
+              <tr mat-row *matRowDef="let row; columns: ['username', 'email', 'matricule', 'role', 'createdAt', 'actions'];"></tr>
+            </table>
+          </mat-card-content>
+        </mat-card>
+      </div>
+
+      <!-- ═══ SYSTEM STATISTICS ═══ -->
+      <div *ngIf="activeSection === 'stats'">
+        <div class="section-title"><mat-icon>bar_chart</mat-icon><h2>System Statistics</h2></div>
+        <div class="stats-grid">
+          <div class="stat-card stat-card--blue"><mat-icon>people</mat-icon><div class="stat-card__body"><span class="stat-card__value">{{ users.length }}</span><span class="stat-card__label">Total Users</span></div></div>
+          <div class="stat-card stat-card--green"><mat-icon>chat_bubble</mat-icon><div class="stat-card__body"><span class="stat-card__value">{{ conversations.length || '—' }}</span><span class="stat-card__label">Conversations</span></div></div>
+          <div class="stat-card stat-card--purple"><mat-icon>admin_panel_settings</mat-icon><div class="stat-card__body"><span class="stat-card__value">{{ users.length > 0 ? (users | filter:'ADMIN').length : 0 }}</span><span class="stat-card__label">Admin Users</span></div></div>
+          <div class="stat-card stat-card--orange"><mat-icon>person</mat-icon><div class="stat-card__body"><span class="stat-card__value">{{ users.length > 0 ? users.length - (users | filter:'ADMIN').length : 0 }}</span><span class="stat-card__label">Regular Users</span></div></div>
+        </div>
+        <mat-card class="admin-card" style="margin-top: 24px;">
+          <mat-card-header><mat-card-title>Users by Role</mat-card-title></mat-card-header>
+          <mat-card-content style="padding: 16px;">
+            <div *ngFor="let role of ['ADMIN', 'USER', 'PROD', 'QUALITE', 'LOGISTIQUE', 'MAINTENANCE', 'RESPONSABLE']" class="role-stat">
+              <span class="role-badge" [ngClass]="'role-badge--' + role.toLowerCase()">{{ role }}</span>
+              <div class="role-stat__bar-wrap"><div class="role-stat__bar" [style.width.%]="users.length ? ((users | filter:role).length / users.length) * 100 : 0"></div></div>
+              <span class="role-stat__count">{{ (users | filter:role).length }}</span>
+            </div>
+          </mat-card-content>
+        </mat-card>
+      </div>
+
+      <!-- ═══ CONVERSATIONS ═══ -->
+      <div *ngIf="activeSection === 'conversations'">
+        <div class="section-title"><mat-icon>chat_bubble</mat-icon><h2>Conversation Management</h2><span class="section-badge">{{ conversations.length }} conversations</span></div>
+        <mat-card class="admin-card">
+          <mat-card-content>
+            <div class="admin-search">
+              <mat-icon>search</mat-icon>
+              <input class="admin-search__input" [(ngModel)]="convSearchQuery" (input)="filterConversations()" placeholder="Search by title or username..." />
+              <button *ngIf="convSearchQuery" mat-icon-button (click)="convSearchQuery = ''; filterConversations()"><mat-icon>close</mat-icon></button>
+            </div>
+            <div *ngIf="convsLoading" class="admin-loading"><mat-spinner diameter="40"></mat-spinner></div>
+            <table *ngIf="!convsLoading" mat-table [dataSource]="filteredConversations" class="admin-table">
+              <ng-container matColumnDef="title"><th mat-header-cell *matHeaderCellDef>Title</th><td mat-cell *matCellDef="let c">{{ c.title }}</td></ng-container>
+              <ng-container matColumnDef="username"><th mat-header-cell *matHeaderCellDef>User</th><td mat-cell *matCellDef="let c"><div class="user-cell"><mat-icon class="user-cell__icon">person</mat-icon>{{ c.username || '—' }}</div></td></ng-container>
+              <ng-container matColumnDef="createdAt"><th mat-header-cell *matHeaderCellDef>Created</th><td mat-cell *matCellDef="let c">{{ c.createdAt | date: 'dd/MM/yyyy HH:mm' }}</td></ng-container>
+              <ng-container matColumnDef="updatedAt"><th mat-header-cell *matHeaderCellDef>Last Activity</th><td mat-cell *matCellDef="let c">{{ c.updatedAt | date: 'dd/MM/yyyy HH:mm' }}</td></ng-container>
+              <tr mat-header-row *matHeaderRowDef="['title', 'username', 'createdAt', 'updatedAt']"></tr>
+              <tr mat-row *matRowDef="let row; columns: ['title', 'username', 'createdAt', 'updatedAt'];"></tr>
+            </table>
+            <div *ngIf="!convsLoading && conversations.length === 0" class="no-data">No conversations found.</div>
+          </mat-card-content>
+        </mat-card>
+      </div>
+
+      <!-- ═══ AUDIT LOG ═══ -->
+      <div *ngIf="activeSection === 'audit'">
+        <div class="section-title"><mat-icon>history</mat-icon><h2>Audit Log</h2></div>
+        <mat-card class="admin-card">
+          <mat-card-content style="padding: 16px;">
+            <div class="audit-list">
+              <div *ngFor="let u of users" class="audit-item">
+                <div class="audit-item__icon audit-item__icon--blue"><mat-icon>person_add</mat-icon></div>
+                <div class="audit-item__content">
+                  <span class="audit-item__action">User Registered</span>
+                  <span class="audit-item__detail"><strong>{{ u.username }}</strong> registered with role <span class="role-badge role-badge--{{ u.role.toLowerCase() }}">{{ u.role }}</span></span>
+                  <span class="audit-item__time">{{ u.createdAt | date: 'dd/MM/yyyy HH:mm' }}</span>
+                </div>
+              </div>
+              <div *ngIf="users.length === 0" class="no-data">No audit records found.</div>
+            </div>
+          </mat-card-content>
+        </mat-card>
+      </div>
+
+      <!-- ═══ SCHEMA MANAGEMENT ═══ -->
+      <div *ngIf="activeSection === 'schema'">
+        <div class="section-title">
+          <mat-icon>storage</mat-icon>
+          <h2>Schema Management</h2>
+        </div>
+
+        <!-- Info bar -->
+        <div class="schema-info-bar">
+          <div class="schema-info-bar__left">
+            <mat-icon>info_outline</mat-icon>
+            <span *ngIf="schemaUpdatedBy">
+              Last updated by <strong>{{ schemaUpdatedBy }}</strong>
+              on {{ schemaUpdatedAt | date: 'dd/MM/yyyy HH:mm' }}
+            </span>
+            <span *ngIf="!schemaUpdatedBy">No schema saved yet — using default.</span>
+          </div>
+          <div class="schema-info-bar__right">
+            <span class="schema-table-count">
+              <mat-icon>table_chart</mat-icon>
+              {{ tablePreview.length }} tables detected
+            </span>
+          </div>
+        </div>
+
+        <!-- Action Toolbar -->
+        <div class="schema-toolbar">
+          <button mat-stroked-button (click)="autoDetect()" [disabled]="autoDetecting" matTooltip="Import schema from MySQL automatically">
+            <mat-icon>auto_fix_high</mat-icon>
+            {{ autoDetecting ? 'Detecting...' : 'Auto-Detect from MySQL' }}
+          </button>
+          <button mat-stroked-button (click)="togglePreview()" [class.active-btn]="showPreview" matTooltip="Preview tables the AI knows about">
+            <mat-icon>preview</mat-icon>
+            Preview Tables
+          </button>
+          <button mat-stroked-button (click)="toggleTest()" [class.active-btn]="showTest" matTooltip="Test schema with a question">
+            <mat-icon>science</mat-icon>
+            Test Schema
+          </button>
+          <button mat-stroked-button (click)="toggleHistory()" [class.active-btn]="showHistory" matTooltip="View previous versions" [disabled]="schemaHistory.length === 0">
+            <mat-icon>history</mat-icon>
+            History ({{ schemaHistory.length }})
+          </button>
+        </div>
+
+        <!-- Preview Panel -->
+        <div *ngIf="showPreview" class="schema-panel">
+          <div class="schema-panel__header">
+            <mat-icon>table_chart</mat-icon>
+            <span>Tables the AI currently knows about</span>
+          </div>
+          <div class="table-preview-grid">
+            <div *ngFor="let table of tablePreview" class="table-preview-card">
+              <div class="table-preview-card__name">
+                <mat-icon>table_rows</mat-icon>
+                {{ table.name }}
+              </div>
+              <div class="table-preview-card__columns">
+                <span *ngFor="let col of table.columns" class="col-chip">{{ col }}</span>
+              </div>
+            </div>
+            <div *ngIf="tablePreview.length === 0" class="no-data">No tables detected in schema.</div>
+          </div>
+        </div>
+
+        <!-- Test Panel -->
+        <div *ngIf="showTest" class="schema-panel">
+          <div class="schema-panel__header">
+            <mat-icon>science</mat-icon>
+            <span>Test Schema — ask a question and see the generated SQL</span>
+          </div>
+          <div class="schema-test">
+            <input
+              class="schema-test__input"
+              [(ngModel)]="testQuestion"
+              placeholder="e.g. How many locked tools are there?"
+              (keydown.enter)="testSchema()" />
+            <button mat-flat-button color="primary" (click)="testSchema()" [disabled]="testLoading || !testQuestion.trim()">
+              <mat-icon>play_arrow</mat-icon>
+              {{ testLoading ? 'Testing...' : 'Run Test' }}
+            </button>
+          </div>
+          <div *ngIf="testResult" class="schema-test__result">
+            <div class="schema-test__result-label">Generated SQL:</div>
+            <code>{{ testResult }}</code>
+          </div>
+        </div>
+
+        <!-- History Panel -->
+        <div *ngIf="showHistory" class="schema-panel">
+          <div class="schema-panel__header">
+            <mat-icon>history</mat-icon>
+            <span>Version History (last {{ schemaHistory.length }} saves)</span>
+          </div>
+          <div class="history-list">
+            <div *ngFor="let version of schemaHistory; let i = index" class="history-item">
+              <div class="history-item__info">
+                <span class="history-item__index">v{{ schemaHistory.length - i }}</span>
+                <span class="history-item__meta">
+                  Saved by <strong>{{ version.updatedBy || 'unknown' }}</strong>
+                  on {{ version.updatedAt | date: 'dd/MM/yyyy HH:mm' }}
+                </span>
+              </div>
+              <button mat-stroked-button (click)="restoreVersion(version)">
+                <mat-icon>restore</mat-icon> Restore
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Schema Editor -->
+        <mat-card class="admin-card">
+          <mat-card-content>
+            <div *ngIf="schemaLoading" class="admin-loading"><mat-spinner diameter="40"></mat-spinner></div>
+            <textarea
+              *ngIf="!schemaLoading"
+              class="schema-editor"
+              [(ngModel)]="schemaText"
+              (ngModelChange)="parseTablePreview()"
+              rows="22"
+              placeholder="Enter schema here — format: tablename(col1, col2, col3)">
+            </textarea>
+            <div class="schema-actions">
+              <button mat-flat-button color="primary" (click)="saveSchema()" [disabled]="schemaSaving">
+                <mat-icon>save</mat-icon>
+                {{ schemaSaving ? 'Saving...' : 'Save Schema' }}
+              </button>
+              <button mat-stroked-button (click)="loadSchema()">
+                <mat-icon>refresh</mat-icon>
+                Reload
+              </button>
+              <span class="schema-char-count">{{ schemaText.length }} characters</span>
+            </div>
+          </mat-card-content>
+        </mat-card>
+
+      </div>
+
+    </div>
+  </div>
+</div>

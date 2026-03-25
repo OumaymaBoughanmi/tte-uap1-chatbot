@@ -6,6 +6,8 @@ import lombok.Data;
 import java.util.List;
 import java.util.Map;
 
+
+
 @Data
 public class ChatRequest {
 
@@ -17,4 +19,6 @@ public class ChatRequest {
      * Each entry contains: { "question": "...", "sql": "..." }
      */
     private List<Map<String, String>> history;
+
+    private String language;
 }

@@ -1,6 +1,7 @@
 export interface ChatRequest {
   message: string;
   history: ConversationTurn[];
+  language?: string;
 }
 
 export interface ConversationTurn {
@@ -10,12 +11,13 @@ export interface ConversationTurn {
 
 export interface ChatResponse {
   generatedSql: string;
-  type: 'table' | 'bar' | 'line' | 'pie' | 'doughnut' | 'scatter' | 'radar' | 'mixed' | 'horizontalBar' | 'error';
+  type: 'table' | 'bar' | 'line' | 'pie' | 'doughnut' | 'scatter' | 'radar' | 'mixed' | 'horizontalBar' | 'error' | 'text';
   columns: string[];
   data: Record<string, any>[];
   chartConfig?: ChartConfig;
   totalRows: number;
   error?: string;
+  naturalAnswer?: string;
 }
 
 export interface ChartConfig {

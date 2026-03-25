@@ -1,0 +1,28 @@
+<div class="session-overlay" *ngIf="show">
+  <div class="session-dialog">
+
+    <div class="session-dialog__icon">
+      <mat-icon>access_time</mat-icon>
+    </div>
+
+    <h2 class="session-dialog__title">Session Expiring Soon</h2>
+
+    <p class="session-dialog__message">
+      Your session will expire in
+      <span class="session-dialog__countdown">{{ countdown }}s</span>
+      due to inactivity.
+    </p>
+
+    <div class="session-dialog__actions">
+      <button mat-flat-button color="primary" (click)="extendSession()">
+        <mat-icon>refresh</mat-icon>
+        Stay Logged In
+      </button>
+      <button mat-stroked-button (click)="logout()">
+        <mat-icon>logout</mat-icon>
+        Logout Now
+      </button>
+    </div>
+
+  </div>
+</div>

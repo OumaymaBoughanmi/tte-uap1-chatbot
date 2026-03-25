@@ -1,0 +1,312 @@
+<div class="dashboard-wrapper">
+
+  <!-- Header -->
+  <div class="dashboard-header">
+    <div class="dashboard-header__left">
+      <img src="assets/logo-tte.jpg" alt="TTE International" class="dashboard-header__logo" />
+      <div class="dashboard-header__titles">
+        <span class="dashboard-header__title">UAP1 Dashboard</span>
+        <span class="dashboard-header__subtitle">TTE International — Production Overview</span>
+      </div>
+    </div>
+    <div class="dashboard-header__right">
+      <span class="chat-header__user" routerLink="/profile" style="cursor:pointer">{{ currentUser?.username }}</span>
+      <button mat-icon-button (click)="toggleLanguage()" [matTooltip]="currentLang === 'fr' ? 'Switch to English' : 'Passer en Français'">
+        <span style="font-size:18px;">{{ currentLang === 'fr' ? '🇫🇷' : '🇬🇧' }}</span>
+      </button>
+      <button mat-icon-button matTooltip="Customize Dashboard" (click)="toggleSettings()" [class.active-settings]="showSettings">
+        <mat-icon>tune</mat-icon>
+      </button>
+      <button mat-stroked-button (click)="goToChat()">
+        <mat-icon>chat</mat-icon>
+        Chat
+      </button>
+      <button *ngIf="currentUser?.role === 'ADMIN'" mat-icon-button matTooltip="Admin Panel" routerLink="/admin">
+        <mat-icon>admin_panel_settings</mat-icon>
+      </button>
+      <button mat-icon-button matTooltip="Logout" (click)="logout()">
+        <mat-icon>logout</mat-icon>
+      </button>
+    </div>
+  </div>
+
+  <!-- Settings Panel -->
+  <div *ngIf="showSettings" class="settings-panel">
+    <div class="settings-panel__header">
+      <h3><mat-icon>tune</mat-icon> Customize Dashboard</h3>
+      <div class="settings-panel__actions">
+        <button mat-stroked-button (click)="resetLayout()">
+          <mat-icon>refresh</mat-icon> Reset
+        </button>
+        <button mat-icon-button (click)="toggleSettings()">
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+    </div>
+    <p class="settings-panel__hint">Toggle visibility, resize, or drag to reorder widgets below.</p>
+    <div class="settings-section">
+      <h4>KPI Cards</h4>
+      <div class="settings-widgets" cdkDropList (cdkDropListDropped)="drop($event)">
+        <div *ngFor="let w of getKpiWidgets()" class="settings-widget" cdkDrag>
+          <mat-icon cdkDragHandle class="drag-handle">drag_indicator</mat-icon>
+          <span class="settings-widget__title">{{ w.title }}</span>
+          <button mat-icon-button (click)="toggleWidget(w)" [matTooltip]="w.visible ? 'Hide' : 'Show'">
+            <mat-icon>{{ w.visible ? 'visibility' : 'visibility_off' }}</mat-icon>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="settings-section">
+      <h4>Charts & Tables</h4>
+      <div class="settings-widgets" cdkDropList (cdkDropListDropped)="drop($event)">
+        <div *ngFor="let w of getChartWidgets()" class="settings-widget" cdkDrag>
+          <mat-icon cdkDragHandle class="drag-handle">drag_indicator</mat-icon>
+          <span class="settings-widget__title">{{ w.title }}</span>
+          <div class="size-buttons">
+            <button [class.active]="w.size === 'small'"   (click)="setSize(w, 'small')"  matTooltip="Small">S</button>
+            <button [class.active]="w.size === 'medium'"  (click)="setSize(w, 'medium')" matTooltip="Medium">M</button>
+            <button [class.active]="w.size === 'large'"   (click)="setSize(w, 'large')"  matTooltip="Large">L</button>
+          </div>
+          <button mat-icon-button (click)="toggleWidget(w)" [matTooltip]="w.visible ? 'Hide' : 'Show'">
+            <mat-icon>{{ w.visible ? 'visibility' : 'visibility_off' }}</mat-icon>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div *ngIf="isLoading" class="dashboard-loading">
+    <mat-spinner diameter="48"></mat-spinner>
+    <p>Loading dashboard...</p>
+  </div>
+
+  <!-- Content -->
+  <div *ngIf="!isLoading && data" class="dashboard-content">
+
+    <!-- ─── KPI CARDS ─────────────────────────────────────────────── -->
+    <div class="section-header">
+      <mat-icon>dashboard</mat-icon>
+      <span>{{ langService.t('kpiSection') }}</span>
+    </div>
+
+    <div class="kpi-grid" cdkDropList cdkDropListOrientation="horizontal" (cdkDropListDropped)="drop($event)">
+
+      <div *ngIf="isVisible('kpi-total-bundles')" class="kpi-card kpi-card--blue" cdkDrag>
+        <mat-icon cdkDragHandle class="kpi-drag-handle">drag_indicator</mat-icon>
+        <mat-icon>label</mat-icon>
+        <div class="kpi-card__body">
+          <span class="kpi-card__value">{{ data.totalBundles }}</span>
+          <span class="kpi-card__label">{{ langService.t('totalBundles') }}</span>
+        </div>
+      </div>
+
+      <div *ngIf="isVisible('kpi-validated')" class="kpi-card kpi-card--green" cdkDrag>
+        <mat-icon cdkDragHandle class="kpi-drag-handle">drag_indicator</mat-icon>
+        <mat-icon>check_circle</mat-icon>
+        <div class="kpi-card__body">
+          <span class="kpi-card__value">{{ data.validatedBundles }}</span>
+          <span class="kpi-card__label">{{ langService.t('validatedBundles') }}</span>
+        </div>
+      </div>
+
+      <div *ngIf="isVisible('kpi-not-validated')" class="kpi-card kpi-card--red" cdkDrag>
+        <mat-icon cdkDragHandle class="kpi-drag-handle">drag_indicator</mat-icon>
+        <mat-icon>cancel</mat-icon>
+        <div class="kpi-card__body">
+          <span class="kpi-card__value">{{ data.notValidatedBundles }}</span>
+          <span class="kpi-card__label">{{ langService.t('notValidated') }}</span>
+        </div>
+      </div>
+
+      <div *ngIf="isVisible('kpi-in-pagoda')" class="kpi-card kpi-card--teal" cdkDrag>
+        <mat-icon cdkDragHandle class="kpi-drag-handle">drag_indicator</mat-icon>
+        <mat-icon>location_on</mat-icon>
+        <div class="kpi-card__body">
+          <span class="kpi-card__value">{{ data.bundlesInPagoda }}</span>
+          <span class="kpi-card__label">{{ langService.t('inPagoda') }}</span>
+        </div>
+      </div>
+
+      <div *ngIf="isVisible('kpi-left-pagoda')" class="kpi-card kpi-card--orange" cdkDrag>
+        <mat-icon cdkDragHandle class="kpi-drag-handle">drag_indicator</mat-icon>
+        <mat-icon>exit_to_app</mat-icon>
+        <div class="kpi-card__body">
+          <span class="kpi-card__value">{{ data.bundlesLeftPagoda }}</span>
+          <span class="kpi-card__label">{{ langService.t('leftPagoda') }}</span>
+        </div>
+      </div>
+
+      <div *ngIf="isVisible('kpi-total-orders')" class="kpi-card kpi-card--purple" cdkDrag>
+        <mat-icon cdkDragHandle class="kpi-drag-handle">drag_indicator</mat-icon>
+        <mat-icon>assignment</mat-icon>
+        <div class="kpi-card__body">
+          <span class="kpi-card__value">{{ data.totalOrders }}</span>
+          <span class="kpi-card__label">{{ langService.t('totalOrders') }}</span>
+        </div>
+      </div>
+
+      <div *ngIf="isVisible('kpi-history')" class="kpi-card kpi-card--dark" cdkDrag>
+        <mat-icon cdkDragHandle class="kpi-drag-handle">drag_indicator</mat-icon>
+        <mat-icon>history</mat-icon>
+        <div class="kpi-card__body">
+          <span class="kpi-card__value">{{ data.totalHistoryRecords }}</span>
+          <span class="kpi-card__label">{{ langService.t('historyRecords') }}</span>
+        </div>
+      </div>
+
+      <div *ngIf="isVisible('kpi-total-tools')" class="kpi-card kpi-card--blue" cdkDrag>
+        <mat-icon cdkDragHandle class="kpi-drag-handle">drag_indicator</mat-icon>
+        <mat-icon>hardware</mat-icon>
+        <div class="kpi-card__body">
+          <span class="kpi-card__value">{{ data.totalTools }}</span>
+          <span class="kpi-card__label">{{ langService.t('totalTools') }}</span>
+        </div>
+      </div>
+
+      <div *ngIf="isVisible('kpi-locked-tools')" class="kpi-card kpi-card--red" cdkDrag>
+        <mat-icon cdkDragHandle class="kpi-drag-handle">drag_indicator</mat-icon>
+        <mat-icon>lock</mat-icon>
+        <div class="kpi-card__body">
+          <span class="kpi-card__value">{{ data.lockedTools }}</span>
+          <span class="kpi-card__label">{{ langService.t('lockedTools') }}</span>
+        </div>
+      </div>
+
+      <div *ngIf="isVisible('kpi-total-machines')" class="kpi-card kpi-card--green" cdkDrag>
+        <mat-icon cdkDragHandle class="kpi-drag-handle">drag_indicator</mat-icon>
+        <mat-icon>precision_manufacturing</mat-icon>
+        <div class="kpi-card__body">
+          <span class="kpi-card__value">{{ data.totalMachines }}</span>
+          <span class="kpi-card__label">{{ langService.t('totalMachines') }}</span>
+        </div>
+      </div>
+
+      <div *ngIf="isVisible('kpi-excluded-machines')" class="kpi-card kpi-card--orange" cdkDrag>
+        <mat-icon cdkDragHandle class="kpi-drag-handle">drag_indicator</mat-icon>
+        <mat-icon>block</mat-icon>
+        <div class="kpi-card__body">
+          <span class="kpi-card__value">{{ data.excludedMachines }}</span>
+          <span class="kpi-card__label">{{ langService.t('excludedMachines') }}</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ─── CHARTS ────────────────────────────────────────────────── -->
+    <div class="section-header" style="margin-top:24px;">
+      <mat-icon>bar_chart</mat-icon>
+      <span>{{ langService.t('chartsSection') }}</span>
+    </div>
+
+    <div class="charts-drag-list" cdkDropList (cdkDropListDropped)="drop($event)">
+
+      <div *ngIf="isVisible('chart-leadset')" class="chart-card chart-card--{{ getSize('chart-leadset') }}" cdkDrag>
+        <div class="chart-card__header">
+          <mat-icon cdkDragHandle class="drag-handle">drag_indicator</mat-icon>
+          <h3 class="chart-card__title">{{ langService.t('bundlesPerLeadset') }}</h3>
+        </div>
+        <div class="chart-card__body">
+          <canvas #leadsetChart></canvas>
+        </div>
+      </div>
+
+      <div *ngIf="isVisible('chart-station')" class="chart-card chart-card--{{ getSize('chart-station') }}" cdkDrag>
+        <div class="chart-card__header">
+          <mat-icon cdkDragHandle class="drag-handle">drag_indicator</mat-icon>
+          <h3 class="chart-card__title">{{ langService.t('qtyPerStation') }}</h3>
+        </div>
+        <div class="chart-card__body">
+          <canvas #stationChart></canvas>
+        </div>
+      </div>
+
+      <div *ngIf="isVisible('chart-status')" class="chart-card chart-card--{{ getSize('chart-status') }}" cdkDrag>
+        <div class="chart-card__header">
+          <mat-icon cdkDragHandle class="drag-handle">drag_indicator</mat-icon>
+          <h3 class="chart-card__title">{{ langService.t('validationStatus') }}</h3>
+        </div>
+        <div class="chart-card__body chart-card__body--small">
+          <canvas #statusChart></canvas>
+        </div>
+      </div>
+
+      <div *ngIf="isVisible('chart-pagoda')" class="chart-card chart-card--{{ getSize('chart-pagoda') }}" cdkDrag>
+        <div class="chart-card__header">
+          <mat-icon cdkDragHandle class="drag-handle">drag_indicator</mat-icon>
+          <h3 class="chart-card__title">{{ langService.t('pagodaStatus') }}</h3>
+        </div>
+        <div class="chart-card__body chart-card__body--small">
+          <canvas #pagodaChart></canvas>
+        </div>
+      </div>
+
+      <div *ngIf="isVisible('chart-exit-pagoda')" class="chart-card chart-card--{{ getSize('chart-exit-pagoda') }}" cdkDrag>
+        <div class="chart-card__header">
+          <mat-icon cdkDragHandle class="drag-handle">drag_indicator</mat-icon>
+          <h3 class="chart-card__title">{{ langService.t('lastExitPagoda') }}</h3>
+        </div>
+        <div class="chart-card__body">
+          <ng-container *ngIf="data.lastExitPerPagoda as exitList">
+            <div *ngIf="exitList.length === 0" class="no-data">{{ langService.t('noBundlesLeft') }}</div>
+            <table *ngIf="exitList.length > 0" class="exit-table">
+              <thead><tr><th>Pagoda Place</th><th>Bundles Exited</th><th>Last Exit</th></tr></thead>
+              <tbody>
+                <tr *ngFor="let item of exitList">
+                  <td>{{ item.label }}</td><td>{{ item.value }}</td><td class="exit-table__date">{{ item.extra }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </ng-container>
+        </div>
+      </div>
+
+      <div *ngIf="isVisible('chart-tool-lock')" class="chart-card chart-card--{{ getSize('chart-tool-lock') }}" cdkDrag>
+        <div class="chart-card__header">
+          <mat-icon cdkDragHandle class="drag-handle">drag_indicator</mat-icon>
+          <h3 class="chart-card__title">{{ langService.t('toolLockStatus') }}</h3>
+        </div>
+        <div class="chart-card__body chart-card__body--small">
+          <canvas #toolLockChart></canvas>
+        </div>
+      </div>
+
+      <div *ngIf="isVisible('chart-machine-status')" class="chart-card chart-card--{{ getSize('chart-machine-status') }}" cdkDrag>
+        <div class="chart-card__header">
+          <mat-icon cdkDragHandle class="drag-handle">drag_indicator</mat-icon>
+          <h3 class="chart-card__title">{{ langService.t('machineStatus') }}</h3>
+        </div>
+        <div class="chart-card__body chart-card__body--small">
+          <canvas #machineStatusChart></canvas>
+        </div>
+      </div>
+
+      <div *ngIf="isVisible('chart-good-bad')" class="chart-card chart-card--{{ getSize('chart-good-bad') }}" cdkDrag>
+        <div class="chart-card__header">
+          <mat-icon cdkDragHandle class="drag-handle">drag_indicator</mat-icon>
+          <h3 class="chart-card__title">{{ langService.t('goodVsBadParts') }}</h3>
+        </div>
+        <div class="chart-card__body">
+          <div *ngIf="!data.goodVsBadPartsPerTool?.length" class="no-data">{{ langService.t('noBadParts') }}</div>
+          <canvas #goodBadPartsChart *ngIf="data.goodVsBadPartsPerTool?.length"></canvas>
+        </div>
+      </div>
+
+      <div *ngIf="isVisible('chart-maintenance')" class="chart-card chart-card--{{ getSize('chart-maintenance') }}" cdkDrag>
+        <div class="chart-card__header">
+          <mat-icon cdkDragHandle class="drag-handle">drag_indicator</mat-icon>
+          <h3 class="chart-card__title">
+            <mat-icon style="color:#f57c00;font-size:18px;vertical-align:middle;">warning</mat-icon>
+            {{ langService.t('toolsMaintenance') }}
+          </h3>
+        </div>
+        <div class="chart-card__body">
+          <div *ngIf="!data.toolsApproachingMaintenance?.length" class="no-data">{{ langService.t('noMaintenance') }}</div>
+          <canvas #maintenanceChart *ngIf="data.toolsApproachingMaintenance?.length"></canvas>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</div>

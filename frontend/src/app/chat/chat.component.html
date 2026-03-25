@@ -11,7 +11,7 @@
   <div class="chat-wrapper">
 
     <!-- Header -->
-    <div class="chat-header">
+    <div class="chat-header" *ngIf="!searchOpen">
       <div class="chat-header__left">
         <button mat-icon-button matTooltip="Toggle history" (click)="toggleSidebar()">
           <mat-icon>menu</mat-icon>
@@ -23,12 +23,71 @@
         <span class="chat-header__badge">UAP1</span>
       </div>
       <div class="chat-header__right">
+        <div class="chat-header__profile" routerLink="/profile" style="cursor:pointer">
+          <img *ngIf="profilePicture" [src]="profilePicture" class="chat-header__avatar" alt="Profile"
+            style="width:36px;height:36px;min-width:36px;max-width:36px;border-radius:50%;object-fit:cover;" />
+          <mat-icon *ngIf="!profilePicture" class="chat-header__avatar-icon">account_circle</mat-icon>
+          <div class="chat-header__user-info">
+            <span class="chat-header__user">{{ currentUser?.username }}</span>
+            <span class="chat-header__role">{{ currentUser?.role }}</span>
+          </div>
+        </div>
+        <button mat-icon-button matTooltip="Search conversations" (click)="toggleSearch()">
+          <mat-icon>search</mat-icon>
+        </button>
         <button mat-icon-button matTooltip="New conversation" (click)="onNewConversation()">
           <mat-icon>add</mat-icon>
         </button>
-        <button mat-icon-button matTooltip="Clear current chat" (click)="clearChat()">
-          <mat-icon>delete_outline</mat-icon>
+        <button mat-icon-button matTooltip="Dashboard" routerLink="/dashboard">
+          <mat-icon>dashboard</mat-icon>
         </button>
+        <button mat-icon-button matTooltip="Logout" (click)="logout()">
+          <mat-icon>logout</mat-icon>
+        </button>
+
+        <button mat-icon-button (click)="toggleLanguage()" [matTooltip]="currentLang === 'fr' ? 'Switch to English' : 'Passer en Français'">
+        <span style="font-size:18px;">{{ currentLang === 'fr' ? '🇫🇷' : '🇬🇧' }}</span>
+        </button>
+
+
+      </div>
+    </div>
+
+    <!-- Search Header -->
+    <div class="search-header" *ngIf="searchOpen">
+      <button mat-icon-button (click)="clearSearch()">
+        <mat-icon>arrow_back</mat-icon>
+      </button>
+      <div class="search-header__bar">
+        <mat-icon>search</mat-icon>
+        <input
+          class="search-header__input"
+          [(ngModel)]="searchQuery"
+          (input)="onSearch()"
+          placeholder="Search conversations..."
+          autofocus />
+        <button *ngIf="searchQuery" mat-icon-button (click)="searchQuery = ''; searchResults = []">
+          <mat-icon>close</mat-icon>
+        </button>
+      </div>
+    </div>
+
+    <!-- Search Results -->
+    <div class="search-results-panel" *ngIf="searchOpen && searchQuery">
+      <div *ngIf="searchLoading" class="search-loading">
+        <mat-spinner diameter="24"></mat-spinner>
+      </div>
+      <div *ngFor="let conv of searchResults" class="search-result" (click)="selectSearchResult(conv)">
+        <mat-icon>chat_bubble_outline</mat-icon>
+        <div class="search-result__info">
+          <span class="search-result__title">{{ conv.title }}</span>
+          <span class="search-result__date">{{ conv.updatedAt | date: 'dd/MM/yyyy' }}</span>
+        </div>
+        <mat-icon class="search-result__arrow">chevron_right</mat-icon>
+      </div>
+      <div *ngIf="!searchLoading && searchResults.length === 0" class="search-no-results">
+        <mat-icon>search_off</mat-icon>
+        <span>No conversations found for "{{ searchQuery }}"</span>
       </div>
     </div>
 
@@ -46,7 +105,9 @@
       </div>
 
       <!-- Message Bubbles -->
-      <div *ngFor="let message of messages" class="message-row" [ngClass]="'message-row--' + message.role">
+      <div *ngFor="let message of messages; let i = index"
+           class="message-row"
+           [ngClass]="'message-row--' + message.role">
 
         <!-- Avatar -->
         <div class="message-avatar">
@@ -57,49 +118,90 @@
         <!-- Bubble -->
         <div class="message-bubble" [ngClass]="'message-bubble--' + message.role">
 
-          <!-- Loading spinner -->
-          <div *ngIf="message.loading" class="message-loading">
-            <mat-spinner diameter="20"></mat-spinner>
-            <span>Thinking...</span>
-          </div>
+         <!-- ─── USER MESSAGE: normal or edit mode ─── -->
+        <ng-container *ngIf="message.role === 'user'">
 
-          <!-- Text -->
-          <p *ngIf="!message.loading && message.text" class="message-text">{{ message.text }}</p>
-
-          <!-- Table Renderer -->
-          <app-table-renderer
-            *ngIf="!message.loading && message.response?.type === 'table' && message.response?.data?.length"
-            [columns]="message.response!.columns"
-            [data]="message.response!.data">
-          </app-table-renderer>
-
-          <!-- Chart Renderer -->
-          <app-chart-renderer
-            *ngIf="!message.loading && isChartType(message.response?.type || '') && message.response?.data?.length"
-            [type]="message.response!.type"
-            [data]="message.response!.data"
-            [chartConfig]="message.response!.chartConfig!">
-          </app-chart-renderer>
-
-          <!-- Action Row -->
-          <div *ngIf="!message.loading && message.response" class="message-actions">
-            <mat-chip-set *ngIf="message.response.generatedSql">
-              <mat-chip [matTooltip]="message.response.generatedSql" matTooltipClass="sql-tooltip">
-                <mat-icon matChipAvatar>code</mat-icon>
-                View SQL
-              </mat-chip>
-            </mat-chip-set>
+          <div class="message-user-content" [class.message-user-content--editing]="editingIndex === i">
+            <p class="message-text">{{ message.text }}</p>
             <button
-              *ngIf="hasExportableData(message)"
-              mat-stroked-button
-              color="primary"
-              class="export-btn"
-              matTooltip="Export to Excel"
-              (click)="exportToExcel(message)">
-              <mat-icon>download</mat-icon>
-              Export Excel
+              *ngIf="!isLoading"
+              mat-icon-button
+              class="message-edit__btn"
+              matTooltip="Edit question"
+              (click)="startEdit(i)">
+              <mat-icon>edit</mat-icon>
             </button>
           </div>
+
+          <div *ngIf="editingIndex === i" class="message-edit__hint">
+            <mat-icon>keyboard_return</mat-icon>
+            <span>Editing — modify your question in the input below and press Send</span>
+            <button mat-button (click)="cancelEdit()">Cancel</button>
+          </div>
+
+        </ng-container>
+
+          <!-- ─── BOT MESSAGE ─── -->
+          <ng-container *ngIf="message.role === 'bot'">
+
+            <!-- Loading spinner -->
+            <div *ngIf="message.loading" class="message-loading">
+              <mat-spinner diameter="20"></mat-spinner>
+              <span>Thinking...</span>
+            </div>
+
+            <!-- Text -->
+            <p *ngIf="!message.loading && message.text && message.text.length > 0" class="message-text">{{ message.text }}</p>
+            <p *ngIf="!message.loading && message.response?.naturalAnswer" class="message-natural-answer">
+              {{ message.response?.naturalAnswer }}
+            </p>
+
+            <!-- Table Renderer -->
+            <app-table-renderer
+              *ngIf="!message.loading && message.response?.type === 'table' && message.response?.data?.length"
+              [columns]="message.response!.columns"
+              [data]="message.response!.data">
+            </app-table-renderer>
+
+            <!-- Chart Renderer -->
+            <app-chart-renderer
+              *ngIf="!message.loading && isChartType(message.response?.type || '') && message.response?.data?.length"
+              [type]="message.response!.type"
+              [data]="message.response!.data"
+              [chartConfig]="message.response!.chartConfig!">
+            </app-chart-renderer>
+
+            <!-- Action Row -->
+            <div *ngIf="!message.loading && message.response" class="message-actions">
+              <mat-chip-set *ngIf="message.response.generatedSql">
+                <mat-chip [matTooltip]="message.response.generatedSql" matTooltipClass="sql-tooltip">
+                  <mat-icon matChipAvatar>code</mat-icon>
+                  View SQL
+                </mat-chip>
+              </mat-chip-set>
+              <button
+                *ngIf="hasExportableData(message)"
+                mat-stroked-button
+                color="primary"
+                class="export-btn"
+                matTooltip="Export to Excel"
+                (click)="exportToExcel(message)">
+                <mat-icon>download</mat-icon>
+                Export Excel
+              </button>
+            </div>
+
+          </ng-container>
+
+          <!-- Copy Button -->
+          <button
+            *ngIf="!message.loading && (message.response?.naturalAnswer || message.text)"
+            mat-icon-button
+            class="message-copy__btn"
+            matTooltip="Copy answer"
+            (click)="copyMessage(message)">
+            <mat-icon>content_copy</mat-icon>
+          </button>
 
           <!-- Timestamp -->
           <span class="message-time">{{ message.timestamp | date: 'HH:mm' }}</span>
@@ -130,6 +232,7 @@
         <mat-icon>{{ isLoading ? 'hourglass_empty' : 'send' }}</mat-icon>
       </button>
     </div>
+
 
   </div>
 </div>

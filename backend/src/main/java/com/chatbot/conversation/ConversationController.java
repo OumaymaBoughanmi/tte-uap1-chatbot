@@ -1,8 +1,12 @@
 package com.chatbot.conversation;
 
+import com.chatbot.auth.User;
+import com.chatbot.auth.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -15,75 +19,82 @@ import java.util.Map;
 public class ConversationController {
 
     private final ConversationService conversationService;
+    private final UserRepository userRepository;
 
-    /**
-     * GET /api/conversations
-     * Returns all conversations ordered by most recent first.
-     */
+    // ─── Get current user ID from JWT ────────────────────────────────────────
+
+    private Long getCurrentUserId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String username = auth.getName();
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        return user.getId();
+    }
+
+    // ─── Endpoints ───────────────────────────────────────────────────────────
+
     @GetMapping
     public ResponseEntity<List<ConversationDTO>> getAllConversations() {
-        return ResponseEntity.ok(conversationService.getAllConversations());
+        return ResponseEntity.ok(conversationService.getAllConversations(getCurrentUserId()));
     }
 
-    /**
-     * GET /api/conversations/{id}
-     * Returns a single conversation with all its messages.
-     */
-    @GetMapping("/{id}")
-    public ResponseEntity<ConversationDTO> getConversation(@PathVariable Long id) {
-        return ResponseEntity.ok(conversationService.getConversation(id));
-    }
-
-    /**
-     * POST /api/conversations
-     * Creates a new conversation.
-     * Body: { "title": "My conversation" }
-     */
     @PostMapping
     public ResponseEntity<ConversationDTO> createConversation(@RequestBody Map<String, String> body) {
         String title = body.getOrDefault("title", "New Conversation");
-        return ResponseEntity.ok(conversationService.createConversation(title));
+        return ResponseEntity.ok(conversationService.createConversation(title, getCurrentUserId()));
     }
 
-    /**
-     * POST /api/conversations/{id}/messages
-     * Saves a message to a conversation.
-     */
-    @PostMapping("/{id}/messages")
-    public ResponseEntity<ConversationDTO.MessageDTO> saveMessage(
-            @PathVariable Long id,
-            @RequestBody Map<String, Object> body
-    ) {
-        ConversationDTO.MessageDTO message = conversationService.saveMessage(
-                id,
-                (String) body.get("role"),
-                (String) body.get("messageText"),
-                (String) body.get("generatedSql"),
-                (String) body.get("responseType"),
-                body.get("responseData")
-        );
-        return ResponseEntity.ok(message);
+    @GetMapping("/{id}")
+    public ResponseEntity<ConversationDTO> getConversation(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(conversationService.getConversation(id, getCurrentUserId()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 
-    /**
-     * PUT /api/conversations/{id}/title
-     * Updates the title of a conversation.
-     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteConversation(@PathVariable Long id) {
+        try {
+            conversationService.deleteConversation(id, getCurrentUserId());
+            return ResponseEntity.ok().build();
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
+    }
+
+@PostMapping("/{id}/messages")
+public ResponseEntity<?> saveMessage(
+        @PathVariable Long id,
+        @RequestBody ConversationDTO.MessageDTO messageDTO) {
+    try {
+        Long currentUserId = getCurrentUserId();
+        log.info("SaveMessage: conversationId={}, currentUserId={}", id, currentUserId);
+        return ResponseEntity.ok(conversationService.saveMessage(id, currentUserId, messageDTO));
+    } catch (RuntimeException e) {
+        Long currentUserId = getCurrentUserId();
+        log.error("SaveMessage FAILED: conversationId={}, currentUserId={}, error={}", 
+            id, currentUserId, e.getMessage());
+        return ResponseEntity.status(404).body("Conversation not found");
+    }
+}
+
     @PutMapping("/{id}/title")
     public ResponseEntity<ConversationDTO> updateTitle(
             @PathVariable Long id,
-            @RequestBody Map<String, String> body
-    ) {
-        return ResponseEntity.ok(conversationService.updateTitle(id, body.get("title")));
+            @RequestBody Map<String, String> body) {
+        try {
+            String newTitle = body.getOrDefault("title", "Conversation");
+            return ResponseEntity.ok(conversationService.updateTitle(id, getCurrentUserId(), newTitle));
+        } catch (RuntimeException e) {
+            return ResponseEntity.notFound().build();
+        }
     }
 
-    /**
-     * DELETE /api/conversations/{id}
-     * Deletes a conversation and all its messages.
-     */
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteConversation(@PathVariable Long id) {
-        conversationService.deleteConversation(id);
-        return ResponseEntity.noContent().build();
-    }
+    @GetMapping("/search")
+    public ResponseEntity<List<ConversationDTO>> searchConversations(@RequestParam String query) {
+    return ResponseEntity.ok(conversationService.searchConversations(getCurrentUserId(), query));
+}
+
+
 }

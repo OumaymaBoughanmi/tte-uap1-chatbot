@@ -1,71 +1,84 @@
 package com.chatbot.llm;
 
+import com.chatbot.config.SchemaConfigRepository;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
 
 @Component
+@RequiredArgsConstructor
 public class PromptBuilder {
 
-    private static final String SCHEMA = """
-            Table name: label_data
-            Columns:
-              - label_id        BIGINT         (primary key, unique label identifier)
-              - cao_no          BIGINT         (production order number)
-              - leadset         VARCHAR        (leadset/product name)
-              - prod_version    INT            (production version)
-              - status          INT            (0 = not validated, 1 = validated)
-              - pagoda_place    VARCHAR        (location/station code e.g. P/DD2-08)
-              - invalid_dt_zt   DATETIME       (invalidation timestamp, nullable)
-              - lsl_uniq_nr     VARCHAR        (LSL unique number, nullable)
-              - quantity        INT            (planned quantity)
-              - quantity_produced INT          (actual quantity produced)
-              - is_kanban       INT            (1 = kanban, 0 = not kanban)
-              - label_info      VARCHAR        (extra label info, nullable)
-              - label_info_ext  VARCHAR        (extended label info, nullable)
-              - fifo_used       INT            (FIFO flag)
-              - subcontractor   VARCHAR        (subcontractor name, nullable)
-              - bundles_feedback_erp_date DATETIME (ERP feedback date, nullable)
-              - expiration_date DATETIME       (expiration date, nullable)
-              - insert_time     DATETIME       (record creation timestamp)
-              - update_time     DATETIME       (last update timestamp)
+    private final SchemaConfigRepository schemaConfigRepository;
+
+    private static final String DEFAULT_SCHEMA = """
+            Tables schema:
+            orders(UniqNr,OrderNo,Description,CarModel,Leadset,ProdVersion,Quantity,Priority,Locked,LockReason,ProdProgress,GoodParts,CreationDate,TargetDate,IsKanban,PagodaPlace,VendorCode,InsertTime,UpdateTime)
+            bundles(LabelId,CaoNo,Leadset,ProdVersion,Status,PagodaPlace,InvalidDtZt,Quantity,QuantityProduced,IsKanban,InsertTime,UpdateTime)
+            bundles_history(BHUniqNr,LabelId,Location,Process,PersonnelNo,Name,InsertTime)
+            terminal(TerminalKey,Name,TerminalType,TerminalLength,TerminalWidth,FeedingType,InsertTime)
+            tool(InventoryNo,Description,Counter,MaxCounter,TotalCounter,GoodPartCounter,BadPartCounter,Locked,LockReason,Location,LastUsed,LastReset,InsertTime)
+            terminal_tool(TerminalKey,InventoryNo,SealKey,VendorCode,WireType1,WireType2)
+            crimpstd(TerminalKey,SealKey,WireType1,CrossSection1,WireType2,CrossSection2,InventoryNo,VendorCode,CarModel,StrippingLength,CrimpHeight,CrimpHeightTol,CrimpWidth,CrimpWidthTol,IsoCrimpHeight,IsoCrimpWidth,PullOffForce,CstUniqNr)
+            tool_history(Index,InventoryNo,ActStatus0,ActStatus1,ActStatus2,PersonnelNo,Notes,InsertTime)
+            machines(WorkStation,MachineName,MachineGroup,Excluded,ExcludedDate,TargetCutsPerHour,CutsCounter,PersonnelNo,CurrLeadset,CurrCaoNo,InsertTime)
             """;
 
-    /**
-     * Builds the system prompt for SQL generation.
-     */
-    public String buildSqlSystemPrompt() {
-        return """
-                You are an expert MySQL query generator.
-                You will be given a database schema and a user question.
-                Your job is to generate a single valid MySQL SELECT query that answers the question.
-                
-                Rules:
-                - Return ONLY the raw SQL query, nothing else.
-                - Do NOT include markdown, backticks, explanations, or comments.
-                - Do NOT use DROP, DELETE, UPDATE, INSERT, ALTER, TRUNCATE.
-                - Use only SELECT statements.
-                - Always use the exact table name: label_data
-                - For date filtering use DATE() function when needed.
-                - Alias columns with meaningful names using AS.
-                - Limit results to 500 rows maximum unless the user asks for all.
-                
-                Schema:
-                """ + SCHEMA;
+    private String getSchema() {
+        return schemaConfigRepository.findAll().stream()
+                .findFirst()
+                .map(s -> s.getSchemaText())
+                .orElse(DEFAULT_SCHEMA);
     }
 
-    /**
-     * Builds the user message for SQL generation including conversation history.
-     */
+    public String buildSqlSystemPrompt(String language) {
+    String langInstruction = "fr".equals(language)
+        ? "Always respond in French when giving natural language answers."
+        : "Always respond in English when giving natural language answers.";
+
+    return langInstruction + "\n" + """
+        You are a MySQL query generator for TTE International UAP1 and CAO data.
+        Return ONLY the raw SQL SELECT query, nothing else. No markdown, no backticks, no comments.
+        Never use DROP/DELETE/UPDATE/INSERT/ALTER/TRUNCATE.
+        
+        Rules:
+        - Tables: orders, bundles, bundles_history, terminal, tool, terminal_tool, crimpstd, tool_history, machines
+        - JOIN bundles to orders: bundles.CaoNo = orders.UniqNr
+        - JOIN bundles_history to bundles: bundles_history.LabelId = bundles.LabelId
+        - JOIN terminal_tool to terminal: terminal_tool.TerminalKey = terminal.TerminalKey
+        - JOIN terminal_tool to tool: terminal_tool.InventoryNo = tool.InventoryNo
+        - JOIN crimpstd to terminal: crimpstd.TerminalKey = terminal.TerminalKey
+        - JOIN tool_history to tool: tool_history.InventoryNo = tool.InventoryNo
+        - Limit 500 rows max. For tool_history always LIMIT 100.
+        - Locked tools: tool.Locked = 1. Excluded machines: machines.Excluded = 1.
+        - crimpstd TerminalKey: always use LIKE with single quotes around the pattern. Example: WHERE TerminalKey LIKE '%5134-01%'
+        - tool_history InventoryNo: always quote. Example: WHERE InventoryNo = '12149'
+        - tool_history personnel: use SELECT DISTINCT PersonnelNo
+        - When user says show me all / list all / show all of them: reuse previous SQL context
+        - Use GoodPartCounter and BadPartCounter from tool for good/bad parts
+        - For machines table, CurrLeadset stores the current project/leadset name. Example: WHERE CurrLeadset = 'BMW-F7X-60V-6VTYCO'
+        - CurrCaoNo stores the current CAO order number (integer), NOT the project name.
+        
+        """ + getSchema();
+}
+
     public String buildSqlUserMessage(String userQuestion, List<Map<String, String>> history) {
         StringBuilder sb = new StringBuilder();
 
         if (history != null && !history.isEmpty()) {
+            List<Map<String, String>> recentHistory = history.subList(
+                Math.max(0, history.size() - 3), history.size()
+            );
             sb.append("Previous conversation context:\n");
-            for (Map<String, String> turn : history) {
+            for (Map<String, String> turn : recentHistory) {
                 sb.append("User: ").append(turn.get("question")).append("\n");
-                sb.append("SQL used: ").append(turn.get("sql")).append("\n\n");
+                sb.append("SQL used: ").append(turn.get("sql")).append("\n");
+                if (turn.get("answer") != null && !turn.get("answer").isEmpty()) {
+                    sb.append("Answer given: ").append(turn.get("answer")).append("\n");
+                }
+                sb.append("\n");
             }
         }
 
@@ -73,9 +86,6 @@ public class PromptBuilder {
         return sb.toString();
     }
 
-    /**
-     * Builds the system prompt for chart/table decision.
-     */
     public String buildVisualizationSystemPrompt() {
         return """
                 You are a data visualization expert.
@@ -105,9 +115,6 @@ public class PromptBuilder {
                 """;
     }
 
-    /**
-     * Builds the user message for visualization decision.
-     */
     public String buildVisualizationUserMessage(
             String userQuestion,
             List<String> columns,

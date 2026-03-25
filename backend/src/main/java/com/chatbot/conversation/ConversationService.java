@@ -1,10 +1,8 @@
 package com.chatbot.conversation;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -16,138 +14,121 @@ public class ConversationService {
 
     private final ConversationRepository conversationRepository;
     private final ConversationMessageRepository messageRepository;
-    private final ObjectMapper objectMapper;
 
-    /**
-     * Creates a new conversation with the given title.
-     */
-    @Transactional
-    public ConversationDTO createConversation(String title) {
+    public ConversationDTO createConversation(String title, Long userId) {
         Conversation conversation = Conversation.builder()
                 .title(title)
+                .userId(userId)
                 .build();
         conversation = conversationRepository.save(conversation);
-        log.info("Created conversation id={} title={}", conversation.getId(), title);
-        return toDTO(conversation);
+        return toDTOWithoutMessages(conversation);
     }
 
-    /**
-     * Saves a message to an existing conversation.
-     */
-    @Transactional
-    public ConversationDTO.MessageDTO saveMessage(
-            Long conversationId,
-            String role,
-            String messageText,
-            String generatedSql,
-            String responseType,
-            Object responseData
-    ) {
-        Conversation conversation = conversationRepository.findById(conversationId)
-                .orElseThrow(() -> new RuntimeException("Conversation not found: " + conversationId));
-
-        String responseDataJson = null;
-        if (responseData != null) {
-            try {
-                responseDataJson = objectMapper.writeValueAsString(responseData);
-            } catch (Exception e) {
-                log.warn("Failed to serialize response data: {}", e.getMessage());
-            }
-        }
+    public ConversationDTO saveMessage(Long conversationId, Long userId, ConversationDTO.MessageDTO messageDTO) {
+        Conversation conversation = conversationRepository.findByIdAndUserId(conversationId, userId)
+                .orElseThrow(() -> new RuntimeException("Conversation not found"));
 
         ConversationMessage message = ConversationMessage.builder()
                 .conversation(conversation)
-                .role(role)
-                .messageText(messageText)
-                .generatedSql(generatedSql)
-                .responseType(responseType)
-                .responseData(responseDataJson)
+                .role(messageDTO.getRole())
+                .messageText(messageDTO.getMessageText())
+                .generatedSql(messageDTO.getGeneratedSql())
+                .responseType(messageDTO.getResponseType())
+                .responseData(messageDTO.getResponseData())
                 .build();
 
-        message = messageRepository.save(message);
-
-        // Update conversation updatedAt
+        messageRepository.save(message);
         conversationRepository.save(conversation);
-
-        return toMessageDTO(message);
+        return toDTOWithoutMessages(conversation);
     }
 
-    /**
-     * Returns all conversations ordered by most recent first.
-     */
-    @Transactional(readOnly = true)
-    public List<ConversationDTO> getAllConversations() {
-        return conversationRepository.findAllByOrderByUpdatedAtDesc()
+    public List<ConversationDTO> getAllConversations(Long userId) {
+        return conversationRepository.findByUserIdOrderByUpdatedAtDesc(userId)
                 .stream()
                 .map(this::toDTOWithoutMessages)
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Returns a single conversation with all its messages.
-     */
-    @Transactional(readOnly = true)
-    public ConversationDTO getConversation(Long id) {
-        Conversation conversation = conversationRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Conversation not found: " + id));
-
-        List<ConversationMessage> messages = messageRepository
-                .findByConversationIdOrderByCreatedAtAsc(id);
-
-        ConversationDTO dto = toDTOWithoutMessages(conversation);
-        dto.setMessages(messages.stream().map(this::toMessageDTO).collect(Collectors.toList()));
-        return dto;
+    public ConversationDTO getConversation(Long conversationId, Long userId) {
+        Conversation conversation = conversationRepository.findByIdAndUserId(conversationId, userId)
+                .orElseThrow(() -> new RuntimeException("Conversation not found"));
+        return toDTO(conversation);
     }
 
-    /**
-     * Deletes a conversation and all its messages.
-     */
-    @Transactional
-    public void deleteConversation(Long id) {
-        conversationRepository.deleteById(id);
-        log.info("Deleted conversation id={}", id);
+    public void deleteConversation(Long conversationId, Long userId) {
+        Conversation conversation = conversationRepository.findByIdAndUserId(conversationId, userId)
+                .orElseThrow(() -> new RuntimeException("Conversation not found"));
+        conversationRepository.delete(conversation);
     }
 
-    /**
-     * Updates the title of a conversation.
-     */
-    @Transactional
-    public ConversationDTO updateTitle(Long id, String newTitle) {
-        Conversation conversation = conversationRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Conversation not found: " + id));
+    public ConversationDTO updateTitle(Long conversationId, Long userId, String newTitle) {
+        Conversation conversation = conversationRepository.findByIdAndUserId(conversationId, userId)
+                .orElseThrow(() -> new RuntimeException("Conversation not found"));
         conversation.setTitle(newTitle);
-        return toDTOWithoutMessages(conversationRepository.save(conversation));
+        conversationRepository.save(conversation);
+        return toDTOWithoutMessages(conversation);
     }
 
-    // ─── Mappers ──────────────────────────────────────────────────────────────
+    public List<ConversationDTO> searchConversations(Long userId, String query) {
+    // Search by title
+    List<Conversation> byTitle = conversationRepository
+            .findByUserIdAndTitleContainingIgnoreCase(userId, query);
 
-    private ConversationDTO toDTO(Conversation c) {
+    // Search by message content
+    List<ConversationMessage> byContent = messageRepository
+            .findByConversation_UserIdAndMessageTextContainingIgnoreCase(userId, query);
+
+    // Merge results — avoid duplicates
+    List<Long> titleIds = byTitle.stream().map(Conversation::getId).collect(Collectors.toList());
+
+    List<Conversation> byContentConversations = byContent.stream()
+            .map(ConversationMessage::getConversation)
+            .filter(c -> !titleIds.contains(c.getId()))
+            .distinct()
+            .collect(Collectors.toList());
+
+    List<Conversation> all = new java.util.ArrayList<>(byTitle);
+    all.addAll(byContentConversations);
+
+    return all.stream()
+            .map(this::toDTOWithoutMessages)
+            .collect(Collectors.toList());
+}
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    private ConversationDTO toDTO(Conversation conversation) {
+        List<ConversationDTO.MessageDTO> messages = List.of();
+
+        if (conversation.getMessages() != null) {
+            messages = conversation.getMessages().stream()
+                    .map(m -> ConversationDTO.MessageDTO.builder()
+                            .id(m.getId())
+                            .role(m.getRole())
+                            .messageText(m.getMessageText())
+                            .generatedSql(m.getGeneratedSql())
+                            .responseType(m.getResponseType())
+                            .responseData(m.getResponseData())
+                            .createdAt(m.getCreatedAt())
+                            .build())
+                    .collect(Collectors.toList());
+        }
+
         return ConversationDTO.builder()
-                .id(c.getId())
-                .title(c.getTitle())
-                .createdAt(c.getCreatedAt())
-                .updatedAt(c.getUpdatedAt())
+                .id(conversation.getId())
+                .title(conversation.getTitle())
+                .createdAt(conversation.getCreatedAt())
+                .updatedAt(conversation.getUpdatedAt())
+                .messages(messages)
                 .build();
     }
 
-    private ConversationDTO toDTOWithoutMessages(Conversation c) {
+    private ConversationDTO toDTOWithoutMessages(Conversation conversation) {
         return ConversationDTO.builder()
-                .id(c.getId())
-                .title(c.getTitle())
-                .createdAt(c.getCreatedAt())
-                .updatedAt(c.getUpdatedAt())
-                .build();
-    }
-
-    private ConversationDTO.MessageDTO toMessageDTO(ConversationMessage m) {
-        return ConversationDTO.MessageDTO.builder()
-                .id(m.getId())
-                .role(m.getRole())
-                .messageText(m.getMessageText())
-                .generatedSql(m.getGeneratedSql())
-                .responseType(m.getResponseType())
-                .responseData(m.getResponseData())
-                .createdAt(m.getCreatedAt())
+                .id(conversation.getId())
+                .title(conversation.getTitle())
+                .createdAt(conversation.getCreatedAt())
+                .updatedAt(conversation.getUpdatedAt())
                 .build();
     }
 }

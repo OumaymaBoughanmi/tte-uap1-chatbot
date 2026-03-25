@@ -63,4 +63,13 @@ export class ConversationHistoryService {
   getActiveConversationId(): number | null {
     return this.activeConversationId;
   }
+
+  clearConversations(): void {
+  this.conversationsSubject.next([]);
+  this.activeConversationId = null;
+}
+
+searchConversations(query: string): Observable<Conversation[]> {
+  return this.http.get<Conversation[]>(`${this.BASE_URL}/search?query=${encodeURIComponent(query)}`);
+}
 }
